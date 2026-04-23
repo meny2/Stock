@@ -69,16 +69,13 @@ export default function ResetPasswordPage() {
 
   /* useEffect(() => {
     let resolved = false;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-    console.log("Initial Session:", session);
-  });
 
     // ── Primary: ดัก Supabase auth event ────────────────────────────────────
     // SDK emit event หลังจากอ่าน hash และ set session เรียบร้อยแล้ว
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
 
-         console.log("Current Auth Event:", event);
+        console.log("Current Auth Event:", event);
 
 
         if (resolved) return;
@@ -88,6 +85,7 @@ export default function ResetPasswordPage() {
           console.log("DEBUG: Password Recovery Event Triggered!");
           console.log("Session Data:", session); // ลองดูว่า session มาไหม
           console.log("------------------------------");
+
           // มาจาก Forgot-Password link → ไม่ต้องใส่รหัสเก่า
           resolved = true;
           setMode("recovery");
@@ -96,11 +94,12 @@ export default function ResetPasswordPage() {
         }
 
         if (event === "SIGNED_IN" && session && _hasToken) {
-          // มาจาก Invite link → ไม่ต้องใส่รหัสเก่า
-          // (_hasToken ป้องกัน SIGNED_IN ปกติจาก session refresh)
+
           console.log("ℹ️ Event เป็น SIGNED_IN แทน (บางเวอร์ชันจะเป็นแบบนี้)");
 
 
+          // มาจาก Invite link → ไม่ต้องใส่รหัสเก่า
+          // (_hasToken ป้องกัน SIGNED_IN ปกติจาก session refresh)
           resolved = true;
           setMode(_savedType === "invite" ? "invite" : "recovery");
           setIsValidSession(true);
@@ -138,68 +137,68 @@ export default function ResetPasswordPage() {
     };
   }, [supabase, router]); */
 
+  const getModeFromUrl = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode");
+  };
+
   useEffect(() => {
     let resolved = false;
 
-    const resolveMode = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    const currentMode = getModeFromUrl();
 
-      // 1. Invite link
-      if (_savedType === "invite" && session) {
-        setMode("invite");
-        setIsValidSession(true);
-        return;
-      }
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Current Auth Event:", event);
 
-      // 2. Recovery link
-      if (_savedType === "recovery" && session) {
+      if (resolved) return;
+
+      // recovery flow จาก mail
+      if (currentMode === "recovery") {
+        resolved = true;
         setMode("recovery");
         setIsValidSession(true);
         return;
       }
 
-      // 3. Logged-in user changing password
+      // reset flow จาก user login
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
+        resolved = true;
+        setMode("reset");
+        setIsValidSession(true);
+        return;
+      }
+    });
+
+    const fallbackTimer = setTimeout(async () => {
+      if (resolved) return;
+
+      if (currentMode === "recovery") {
+        resolved = true;
+        setMode("recovery");
+        setIsValidSession(true);
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (session) {
+        resolved = true;
         setMode("reset");
         setIsValidSession(true);
         return;
       }
 
-      // 4. Invalid session
       setIsValidSession(false);
       setTimeout(() => router.push("/login"), 3000);
-    };
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event) => {
-      if (resolved) return;
-
-      if (event === "PASSWORD_RECOVERY") {
-        resolved = true;
-        setMode("recovery");
-        setIsValidSession(true);
-        return;
-      }
-
-      if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
-        resolved = true;
-        await resolveMode();
-        return;
-      }
-    });
-
-    const timer = setTimeout(async () => {
-      if (resolved) return;
-      resolved = true;
-      await resolveMode();
     }, 1000);
 
     return () => {
       subscription.unsubscribe();
-      clearTimeout(timer);
+      clearTimeout(fallbackTimer);
     };
   }, [supabase, router]);
 

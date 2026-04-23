@@ -53,7 +53,7 @@ export default function Sidebar({ shop_id, shopName, role, logoUrl }: SidebarPro
   // ✅ ฟังก์ชันสลับร้านค้า
   const handleSwitchShop = () => {
     // ล้างข้อมูล shop_id เดิมในกรณีที่มีการเก็บใน LocalStorage (ถ้ามี)
-    router.push("/shop");
+    router.push("/select-shop");
   };
 
   // ✅ ฟังก์ชันออกจากระบบ

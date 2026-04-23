@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createBrowserClient } from '@supabase/ssr';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Mail, Lock, LogIn, AlertCircle, CheckCircle2, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle, CheckCircle2, Loader2, Eye, EyeOff, KeyRound, Wrench } from 'lucide-react';
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
 
@@ -21,8 +21,8 @@ export default function LoginContent() {
   const searchParams = useSearchParams();
 
   const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
   );
 
   useEffect(() => {
@@ -41,23 +41,50 @@ export default function LoginContent() {
     setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
-    
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setErrorMsg(error.message === 'Invalid login credentials' ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' : error.message);
-      setLoading(false);
-    } else {
-      router.replace('/shop'); 
+
+    try {
+      const loginEmail = email.trim().toLowerCase();
+      const loginPassword = password.trim();
+
+      if (!loginEmail || !loginPassword) {
+        setErrorMsg("กรุณากรอกอีเมลและรหัสผ่าน");
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+
+      if (error) {
+        if (error.message === "Invalid login credentials") {
+          setErrorMsg("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+        } else {
+          setErrorMsg(error.message);
+        }
+        setLoading(false);
+        return;
+      }
+
+      if (!data.session) {
+        setErrorMsg("เข้าสู่ระบบไม่สำเร็จ: ไม่พบ session");
+        setLoading(false);
+        return;
+      }
+
+      router.replace("/select-shop");
       router.refresh();
+    } catch (err: any) {
+      setErrorMsg("เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
+      setLoading(false);
     }
   };
 
   const handleSocialLogin = async (provider: 'google' | 'facebook') => {
     await supabase.auth.signInWithOAuth({
       provider,
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
   };
 
@@ -83,7 +110,7 @@ export default function LoginContent() {
 
       <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-10 px-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] sm:rounded-[32px] sm:px-12 border border-slate-100/50 space-y-8">
-          
+
           {errorMsg && (
             <div className="flex items-center gap-3 bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 text-sm font-semibold animate-in fade-in zoom-in-95 duration-200">
               <AlertCircle size={18} className="shrink-0" />
@@ -99,7 +126,7 @@ export default function LoginContent() {
           )}
 
           <form className="space-y-5" onSubmit={handleLogin}>
-            {/* Email Input */}
+            {/* Email */}
             <div className="space-y-1.5">
               <label className="text-[12px] font-bold text-slate-400 uppercase ml-1">อีเมล</label>
               <div className="relative">
@@ -117,11 +144,14 @@ export default function LoginContent() {
               </div>
             </div>
 
-            {/* Password Input - Fixed Section */}
+            {/* Password */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center px-1">
                 <label className="text-[12px] font-bold text-slate-400 uppercase">รหัสผ่าน</label>
-                <Link href="/auth/forgot-password" className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors">
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                >
                   ลืมรหัสผ่าน?
                 </Link>
               </div>
@@ -137,7 +167,6 @@ export default function LoginContent() {
                   className="w-full pl-12 pr-12 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
                   placeholder="••••••••"
                 />
-                {/* ย้ายปุ่มดวงตามาไว้ใน div relative เดียวกันกับ input */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -148,6 +177,7 @@ export default function LoginContent() {
               </div>
             </div>
 
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading || !isMounted}
@@ -164,17 +194,62 @@ export default function LoginContent() {
             </button>
           </form>
 
+           {/* ── ส่วนที่เพิ่มเข้าไปใหม่: Force Change Password Link ── */}
+          <div className="pt-4 border-t border-slate-100">
+            <Link 
+              href="/auth/force-change-password" 
+              className="flex items-center justify-center gap-2 text-sm font-bold text-slate-500 hover:text-orange-600 transition-colors group"
+            >
+              <Wrench size={16} className="group-hover:rotate-12 transition-transform" />
+              <span>ลืมรหัสผ่าน? (กรณีใช้อีเมลสมมติ)</span>
+            </Link>
+          </div>
+
+          {/* ── Change Password link ── */}
+          {/* user ยังไม่ได้ล็อกอิน → ต้องผ่าน forgot-password flow ก่อน
+              Supabase จะส่ง email → กด link → หน้า reset-password (mode: recovery) */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-100"></div>
+              <div className="w-full border-t border-dashed border-slate-100" />
+            </div>
+            <div className="relative flex justify-center">
+              <Link
+                href="/auth/forgot-password"
+                className="
+                  inline-flex items-center gap-2
+                  px-4 py-2
+                  bg-white
+                  border border-slate-200
+                  rounded-2xl
+                  text-xs font-bold text-slate-500
+                  hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50
+                  transition-all duration-200
+                  shadow-sm
+                  group
+                "
+              >
+                <KeyRound
+                  size={13}
+                  className="text-slate-400 group-hover:text-blue-500 transition-colors duration-200"
+                />
+                ต้องการเปลี่ยนรหัสผ่าน?
+              </Link>
+            </div>
+          </div>
+
+          {/* Social login divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-100" />
             </div>
             <div className="relative flex justify-center text-xs uppercase font-bold tracking-widest">
               <span className="px-3 bg-white text-slate-300">หรือใช้บัญชีอื่น</span>
             </div>
           </div>
 
+          {/* Social buttons */}
           <div className="grid grid-cols-2 gap-4">
-            <button 
+            <button
               type="button"
               onClick={() => handleSocialLogin('google')}
               className="flex items-center justify-center gap-2 py-3 px-4 border border-slate-100 rounded-2xl bg-white text-sm font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-200 transition-all active:scale-[0.98]"
@@ -182,7 +257,7 @@ export default function LoginContent() {
               <FcGoogle size={20} />
               <span>Google</span>
             </button>
-            <button 
+            <button
               type="button"
               onClick={() => handleSocialLogin('facebook')}
               className="flex items-center justify-center gap-2 py-3 px-4 border border-slate-100 rounded-2xl bg-white text-sm font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-200 transition-all active:scale-[0.98]"
@@ -191,6 +266,7 @@ export default function LoginContent() {
               <span>Facebook</span>
             </button>
           </div>
+
         </div>
       </div>
     </div>

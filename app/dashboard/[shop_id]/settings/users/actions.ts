@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 /**
- * 1. เพิ่มสมาชิกใหม่ (สร้างบัญชีโดยตรง + บันทึกสิทธิ์)
+ * 1. เพิ่มสมาชิกใหม่ (ส่ง Invite ทางอีเมล + บันทึกสิทธิ์)
  */
 export async function addMember(payload: {
   email: string,
@@ -17,37 +17,51 @@ export async function addMember(payload: {
   try {
     const supabaseAdmin = await createAdminClient()
 
-    // --- ส่วนที่ 1: สร้างบัญชีพนักงานโดยตรง (ไม่ต้องรออีเมล) ---
-    // วิธีนี้ Admin จะเป็นคนกำหนดรหัสผ่านเริ่มต้นให้พนักงานเลย
-    const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: payload.email,
-      password: 'ChangeMe1234!', // 🚩 รหัสผ่านเริ่มต้น (พนักงานไปเปลี่ยนเองทีหลังได้)
-      email_confirm: true,       // ยืนยันอีเมลให้ทันที ไม่ต้องกดลิงก์
-      user_metadata: { invited_by_shop: payload.shopId }
-    })
+    /* ---------------------------------------------------------
+     * 🚩 ส่วนที่แก้ไข: เปลี่ยนจาก Fix Password เป็นการส่ง Invite
+     * --------------------------------------------------------- */
+    
+    // ส่งอีเมลเชิญเพื่อให้พนักงานตั้งรหัสผ่านเอง
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      payload.email,
+      {
+        data: { invited_by_shop: payload.shopId },
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/set-password` // ถ้าต้องการระบุหน้าที่จะให้พนักงานไปหลังกดยอมรับ
+      }
+    )
+
+    /* ---------------------------------------------------------
+     * [COMMENTED] โค้ดเดิมสำหรับสร้าง User แบบระบุรหัสผ่านโดยตรง
+     * ---------------------------------------------------------
+     * const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+     *   email: payload.email,
+     *   password: 'ChangeMe1234!', 
+     *   email_confirm: true,
+     *   user_metadata: { invited_by_shop: payload.shopId }
+     * })
+     * --------------------------------------------------------- */
 
     let userId: string
 
-    if (createError) {
-      // กรณีมี User อยู่แล้ว (เคยสมัครไว้แล้ว) ให้ดึง ID มาใช้ต่อ
-      if (createError.message.includes("already registered")) {
+    if (inviteError) {
+      // กรณีมี User อยู่แล้ว (เคยถูกเชิญหรือสมัครไว้แล้ว)
+      if (inviteError.message.includes("already registered") || inviteError.message.includes("already invited")) {
         const supabase = await createClient(); 
-        const { data: existingUser } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('email', payload.email)
-          .single()
         
-        if (!existingUser) throw new Error("ไม่พบข้อมูลโปรไฟล์เดิมในระบบ")
+        // ค้นหา ID จาก Table auth.users (ผ่าน Admin API)
+        const { data: usersData } = await supabaseAdmin.auth.admin.listUsers()
+        const existingUser = usersData.users.find(u => u.email === payload.email)
+        
+        if (!existingUser) throw new Error("ไม่พบข้อมูลผู้ใช้งานเดิมในระบบ")
         userId = existingUser.id
       } else {
-        throw new Error(`สร้างพนักงานไม่สำเร็จ: ${createError.message}`)
+        throw new Error(`ส่งอีเมลเชิญไม่สำเร็จ: ${inviteError.message}`)
       }
     } else {
-      userId = userData.user.id
+      userId = inviteData.user.id
       console.log('--------------------------------------------------')
-      console.log('✅ สร้างพนักงานสำเร็จ:', payload.email)
-      console.log('🔑 รหัสผ่านเริ่มต้นคือ: ChangeMe1234!')
+      console.log('✅ ส่งคำเชิญสำเร็จ:', payload.email)
+      console.log('📧 ระบบส่ง Link ตั้งรหัสผ่านไปที่อีเมลพนักงานแล้ว')
       console.log('--------------------------------------------------')
     }
 
