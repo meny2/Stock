@@ -203,39 +203,7 @@ export default function LoginContent() {
               <Wrench size={16} className="group-hover:rotate-12 transition-transform" />
               <span>ลืมรหัสผ่าน? (กรณีใช้อีเมลสมมติ)</span>
             </Link>
-          </div>
-
-          {/* ── Change Password link ── */}
-          {/* user ยังไม่ได้ล็อกอิน → ต้องผ่าน forgot-password flow ก่อน
-              Supabase จะส่ง email → กด link → หน้า reset-password (mode: recovery) */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-dashed border-slate-100" />
-            </div>
-            <div className="relative flex justify-center">
-              <Link
-                href="/auth/forgot-password"
-                className="
-                  inline-flex items-center gap-2
-                  px-4 py-2
-                  bg-white
-                  border border-slate-200
-                  rounded-2xl
-                  text-xs font-bold text-slate-500
-                  hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50
-                  transition-all duration-200
-                  shadow-sm
-                  group
-                "
-              >
-                <KeyRound
-                  size={13}
-                  className="text-slate-400 group-hover:text-blue-500 transition-colors duration-200"
-                />
-                ต้องการเปลี่ยนรหัสผ่าน?
-              </Link>
-            </div>
-          </div>
+          </div>         
 
           {/* Social login divider */}
           <div className="relative">

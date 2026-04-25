@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, ChevronDown, LogOut, User, Building2, Settings, Search, X } from "lucide-react";
+import { Bell, ChevronDown, LogOut, User, Building2, Settings, Search, X, KeyRound } from "lucide-react"; // เพิ่ม KeyRound
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useSearch } from "@/context/SearchContext";
+import Link from "next/link"; // เพิ่ม Link สำหรับการเปลี่ยนหน้า
 
 interface Branch {
   id: string;
@@ -26,12 +27,9 @@ export default function Header({
   const [branchOpen, setBranchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   
-  // 🚀 State สำหรับเก็บชื่อ-นามสกุลจริง
   const [fullName, setFullName] = useState<string>("Loading...");
-
   const { searchTerm, setSearchTerm, selectedBranch, setSelectedBranch } = useSearch();
 
-  // 🚀 1. ดึงชื่อ-นามสกุลจากตาราง profiles
   useEffect(() => {
     const fetchUserProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -45,7 +43,6 @@ export default function Header({
         if (data && !error) {
           setFullName(`${data.first_name} ${data.last_name}`);
         } else {
-          // ถ้าดึงไม่ได้ ให้ใช้ส่วนหน้าของ Email แทน
           setFullName(userEmail.split('@')[0]);
         }
       }
@@ -53,7 +50,6 @@ export default function Header({
     fetchUserProfile();
   }, [supabase, userEmail]);
 
-  // Logic จัดการสาขา
   const hasMultipleBranches = branches.length > 1;
   const hasSingleBranch = branches.length === 1;
 
@@ -149,7 +145,7 @@ export default function Header({
       </div>
 
       {/* 🔍 Search Bar */}
-      <div className="flex-1 max-w-2xl relative group hidden sm:block">
+      <div className="flex-1 max-2xl relative group hidden sm:block">
         <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
         <input 
           type="text" 
@@ -180,7 +176,6 @@ export default function Header({
             <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white text-sm font-black shadow-lg shadow-blue-200">
               {fullName.charAt(0).toUpperCase()}
             </div>
-            {/* 🚀 แสดง ชื่อ-นามสกุล และ Email */}
             <div className="hidden lg:flex flex-col items-start leading-tight">
               <span className="text-sm font-bold text-slate-800">
                 {fullName}
@@ -195,27 +190,41 @@ export default function Header({
           {profileOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setProfileOpen(false)} />
-              <div className="absolute top-full right-0 mt-3 z-20 bg-white border border-slate-100 rounded-[1.5rem] shadow-2xl min-w-[240px] py-2 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="px-5 py-4 border-b border-slate-50 bg-slate-50/30">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">บัญชีผู้ใช้</p>
-                  <p className="text-sm font-black text-slate-800 truncate">{fullName}</p>
-                  <p className="text-[11px] font-medium text-slate-500 truncate">{userEmail}</p>
+              <div className="absolute top-full right-0 mt-3 z-20 bg-white border border-slate-100 rounded-[1.5rem] shadow-2xl min-w-[220px] py-2 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="px-5 py-3 border-b border-slate-50 mb-1">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">ล็อกอินในฐานะ</p>
+                  <p className="text-sm font-bold text-slate-800 truncate">{fullName}</p>
                 </div>
-                <div className="p-2 space-y-1">
-                  <button onClick={() => { router.push("/profile"); setProfileOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-blue-50 hover:text-blue-700 rounded-xl transition-all group">
-                    <User size={18} className="text-slate-400 group-hover:text-blue-500" />
-                    โปรไฟล์ส่วนตัว
-                  </button>
-                  <button onClick={() => { router.push("/settings"); setProfileOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-blue-50 hover:text-blue-700 rounded-xl transition-all group">
-                    <Settings size={18} className="text-slate-400 group-hover:text-blue-500" />
-                    ตั้งค่าระบบ
-                  </button>
-                  <div className="h-px bg-slate-50 my-1" />
-                  <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 rounded-xl transition-all group">
-                    <LogOut size={18} className="text-rose-400 group-hover:text-rose-600" />
-                    ออกจากระบบ
-                  </button>
-                </div>
+                
+                <button className="w-full text-left px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-3">
+                  <User size={16} className="text-slate-400" />
+                  โปรไฟล์ของฉัน
+                </button>
+
+                {/* 🔑 เมนูเปลี่ยนรหัสผ่านที่เพิ่มใหม่ */}
+                <Link 
+                  href="/auth/reset-password"
+                  className="w-full text-left px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-3"
+                  onClick={() => setProfileOpen(false)}
+                >
+                  <KeyRound size={16} className="text-slate-400" />
+                  เปลี่ยนรหัสผ่าน
+                </Link>
+
+                <button className="w-full text-left px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-3">
+                  <Settings size={16} className="text-slate-400" />
+                  ตั้งค่าระบบ
+                </button>
+
+                <div className="h-px bg-slate-50 my-1 mx-2" />
+                
+                <button 
+                  onClick={handleSignOut}
+                  className="w-full text-left px-5 py-3 text-sm text-rose-600 hover:bg-rose-50 transition-all flex items-center gap-3 font-bold"
+                >
+                  <LogOut size={16} />
+                  ออกจากระบบ
+                </button>
               </div>
             </>
           )}
