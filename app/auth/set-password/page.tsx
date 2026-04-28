@@ -67,103 +67,69 @@ export default function ResetPasswordPage() {
   const supabase = createClient();
   const router = useRouter();
 
-  /* useEffect(() => {
-    let resolved = false;
-
-    // ── Primary: ดัก Supabase auth event ────────────────────────────────────
-    // SDK emit event หลังจากอ่าน hash และ set session เรียบร้อยแล้ว
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-
-        console.log("Current Auth Event:", event);
-
-
-        if (resolved) return;
-
-        if (event === "PASSWORD_RECOVERY") {
-          console.log("------------------------------");
-          console.log("DEBUG: Password Recovery Event Triggered!");
-          console.log("Session Data:", session); // ลองดูว่า session มาไหม
-          console.log("------------------------------");
-
-          // มาจาก Forgot-Password link → ไม่ต้องใส่รหัสเก่า
-          resolved = true;
-          setMode("recovery");
-          setIsValidSession(true);
-          return;
-        }
-
-        if (event === "SIGNED_IN" && session && _hasToken) {
-
-          console.log("ℹ️ Event เป็น SIGNED_IN แทน (บางเวอร์ชันจะเป็นแบบนี้)");
-
-
-          // มาจาก Invite link → ไม่ต้องใส่รหัสเก่า
-          // (_hasToken ป้องกัน SIGNED_IN ปกติจาก session refresh)
-          resolved = true;
-          setMode(_savedType === "invite" ? "invite" : "recovery");
-          setIsValidSession(true);
-          return;
-        }
-
-        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session && !_hasToken) {
-          // มี session อยู่แล้ว ไม่ได้มาจาก email link → mode reset
-          resolved = true;
-          setMode("reset");
-          setIsValidSession(true);
-          return;
-        }
-      }
-    );
-
-    // ── Fallback: รอ 800ms ถ้า SDK ไม่ emit event ────────────────────────────
-    const fallbackTimer = setTimeout(async () => {
-      if (resolved) return;
-      resolved = true;
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setMode("reset");
-        setIsValidSession(true);
-      } else {
-        setIsValidSession(false);
-        setTimeout(() => router.push("/login"), 3000);
-      }
-    }, 800);
-
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(fallbackTimer);
-    };
-  }, [supabase, router]); */
-
   const getModeFromUrl = () => {
     const params = new URLSearchParams(window.location.search);
     return params.get("mode");
   };
 
-  useEffect(() => {
-    let resolved = false;
+useEffect(() => {
+  let resolved = false;
 
-    const currentMode = getModeFromUrl();
+  const initAuth = async () => {
+    // 1. ดึงข้อมูลจาก URL ให้ชัดเจน (ทั้ง Query และ Hash)
+    const urlParams = new URLSearchParams(window.location.search);
+    const modeFromUrl = urlParams.get("mode") as PageMode; 
+    
+    const hash = window.location.hash.substring(1);
+    const hashParams = new URLSearchParams(hash);
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Current Auth Event:", event);
+    // 2. ล้าง Session ซ้อน และ Force Set Session ใหม่ (สำหรับ Invite / Recovery)
+    if (accessToken && (modeFromUrl === "invite" || modeFromUrl === "recovery" || _hasToken)) {
+      const { data: { session: existingSession } } = await supabase.auth.getSession();
+      
+      // ถ้ามีคนอื่น Login ค้างอยู่ ให้ Sign Out ออกทันที
+      if (existingSession && existingSession.user.email !== hashParams.get("email")) {
+        await supabase.auth.signOut();
+      }
 
+      // บังคับใช้ Session จาก Token ในลิงก์เท่านั้น
+      await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken || "",
+      });
+
+      // 2. แก้ไขการ setMode ตรงนี้ให้ TS มั่นใจ
+      const targetMode: PageMode = modeFromUrl || (_savedType as PageMode) || "recovery";
+      setMode(targetMode);
+      
+      setIsValidSession(true);
+      resolved = true;
+
+    }
+
+    // 3. ติดตามสถานะ Auth (สำหรับกรณีทั่วไป หรือ PKCE Flow)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (resolved) return;
 
-      // recovery flow จาก mail
-      if (currentMode === "recovery") {
+      // ลำดับความสำคัญ: ถ้ามี Token หรือ Mode ใน URL ให้ใช้ค่านั้นก่อน
+      if (modeFromUrl === "invite" || (accessToken && _savedType === "invite")) {
+        resolved = true;
+        setMode("invite");
+        setIsValidSession(true);
+        return;
+      }
+
+      if (modeFromUrl === "recovery" || event === "PASSWORD_RECOVERY") {
         resolved = true;
         setMode("recovery");
         setIsValidSession(true);
         return;
       }
 
-      // reset flow จาก user login
-      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
+      // กรณีเปลี่ยนรหัสผ่านปกติ (ต้องไม่มี Token และต้องมี Session)
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session && !accessToken) {
         resolved = true;
         setMode("reset");
         setIsValidSession(true);
@@ -171,36 +137,43 @@ export default function ResetPasswordPage() {
       }
     });
 
+    // 4. Fallback Timer
     const fallbackTimer = setTimeout(async () => {
       if (resolved) return;
 
-      if (currentMode === "recovery") {
-        resolved = true;
+      if (modeFromUrl === "invite" || _savedType === "invite") {
+        setMode("invite");
+      } else if (modeFromUrl === "recovery" || _savedType === "recovery") {
         setMode("recovery");
-        setIsValidSession(true);
-        return;
+      } else {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setMode("reset");
+        } else {
+          setIsValidSession(false);
+          router.push("/login");
+          return;
+        }
       }
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (session) {
-        resolved = true;
-        setMode("reset");
-        setIsValidSession(true);
-        return;
-      }
-
-      setIsValidSession(false);
-      setTimeout(() => router.push("/login"), 3000);
+      resolved = true;
+      setIsValidSession(true);
     }, 1000);
 
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(fallbackTimer);
-    };
-  }, [supabase, router]);
+    return { subscription, fallbackTimer };
+  };
+
+  const authCleanup = initAuth();
+
+  return () => {
+    authCleanup.then((res) => {
+      if (res) {
+        res.subscription.unsubscribe();
+        clearTimeout(res.fallbackTimer);
+      }
+    });
+  };
+}, [supabase, router, _hasToken, _savedType]);
+
 
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
@@ -219,54 +192,69 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
 
-    // เฉพาะ mode "reset" เท่านั้นที่ต้องตรวจรหัสเก่าก่อน
-    if (mode === "reset") {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const email = sessionData.session?.user?.email;
+    try {
+      // 1. ดึง Token จาก URL โดยตรง (เชื่อถือได้ที่สุดสำหรับ Invite/Recovery)
+      const hash = window.location.hash;
+      const params = new URLSearchParams(hash.substring(1));
+      const accessTokenFromUrl = params.get("access_token");
+      const refreshTokenFromUrl = params.get("refresh_token");
 
-      if (!email) {
-        setErrorMsg("ไม่พบข้อมูลบัญชีผู้ใช้ กรุณาเข้าสู่ระบบใหม่");
-        setLoading(false);
-        return;
+      let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      // 2. ถ้ามาจากลิงก์ (มี Token) ให้บังคับใช้ Session จาก Token นั้น
+      if (accessTokenFromUrl) {
+        const { data, error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessTokenFromUrl,
+          refresh_token: refreshTokenFromUrl || "",
+        });
+        if (setSessionError) throw setSessionError;
+        session = data.session;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password: oldPassword,
-      });
-
-      if (signInError) {
-        setErrorMsg("รหัสผ่านเดิมไม่ถูกต้อง");
-        setLoading(false);
-        return;
+      if (!session) {
+        throw new Error("ไม่สามารถสร้างเซสชันได้ กรุณารีเฟรชหน้าจอหรือใช้ลิงก์จากอีเมลอีกครั้ง");
       }
-    }
 
-    // อัปเดตรหัสผ่านใหม่ (ใช้ได้กับทุก mode)
-    const { error } = await supabase.auth.updateUser({ password });
+      // 3. ป้องกันปัญหา Mode ผิดพลาด (หัวใจสำคัญของการแก้รอบนี้)
+      // ถ้ามี Token จาก URL บังคับว่าห้ามเช็ครหัสผ่านเดิมเด็ดขาด!
+      const isLinkFlow = accessTokenFromUrl !== null || _hasToken; 
+      
+      if (mode === "reset" && !isLinkFlow) {
+        const email = session.user?.email;
+        if (!email) throw new Error("ไม่พบข้อมูลบัญชีผู้ใช้");
 
-    if (error) {
-      setErrorMsg(
-        error.message.includes("same as the old one")
-          ? "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม"
-          : error.message
-      );
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password: oldPassword,
+        });
+        if (signInError) throw new Error("รหัสผ่านเดิมไม่ถูกต้อง");
+      }
+
+      // 4. อัปเดตรหัสผ่านใหม่
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+
+      if (updateError) {
+        if (updateError.message.includes("same as the old one")) {
+          throw new Error("รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม");
+        }
+        throw updateError;
+      }
+
+      setIsSuccess(true);
+      setTimeout(async () => {
+        // ตรวจสอบโหมดตอนจบเพื่อ redirect
+        if (mode === "reset" && !isLinkFlow) {
+          router.push("/dashboard");
+        } else {
+          await supabase.auth.signOut();
+          window.location.href = "/login?message=password-updated";
+        }
+      }, 2000);
+
+    } catch (error: any) {
+      setErrorMsg(error.message);
       setLoading(false);
-      return;
     }
-
-    setIsSuccess(true);
-
-    setTimeout(async () => {
-      if (mode === "reset") {
-        router.push("/dashboard");
-      } else {
-        // invite / recovery → sign out แล้วให้ login ใหม่ด้วย credential จริง
-        await supabase.auth.signOut();
-        router.push("/login?message=password-updated");
-      }
-      router.refresh();
-    }, 2000);
   };
 
   // ─── UI States ───────────────────────────────────────────────

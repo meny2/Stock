@@ -59,6 +59,7 @@ export default function StoreSelectorPage() {
 
               // 2. คำนวณวันหมดอายุ (รองรับทั้งแบบ Object และ Array)
               let daysLeft = 0;
+              let isExpired = false;
               const subData = s.subscriptions_data;
               let endDateStr = "";
 
@@ -74,14 +75,22 @@ export default function StoreSelectorPage() {
 
                 if (endDateStr) {
                   const latestEnd = new Date(endDateStr);
+                  latestEnd.setHours(23, 59, 59, 999);
                   const today = new Date();
                   const diffTime = latestEnd.getTime() - today.getTime();
                   daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  
+                  // ถ้ามีข้อมูลวันหมดอายุจริง ถึงค่อยเช็คว่า expired ไหม
+                  isExpired = daysLeft < 0;
 
                   console.log('ผลลัพธ์การคำนวณวันหมดอายุ:', latestEnd, today, diffTime, daysLeft);
                 }
-              }
-              
+              } else {
+                // 💡 กรณี subData เป็น null เลย
+                isExpired = false;
+              }              
+
+              console.log(`ร้าน: ${s.shop_name}, หมดอายุ: ${endDateStr}, วันนี้: ${new Date()}, เหลือ: ${daysLeft} วัน`);
 
               return {
                 id: s.id.toString(),
@@ -89,9 +98,9 @@ export default function StoreSelectorPage() {
                 role: item.roles?.role_name || 'Staff',
                 branches_count: branchesCount,
                 status: daysLeft <= 0 ? 'expired' : 'active',
-                days_left: daysLeft > 0 ? daysLeft : 0
+                days_left: daysLeft > 0 ? daysLeft : 0                
               };
-             
+
             });
           setShops(formattedShops);
         }
@@ -165,7 +174,7 @@ export default function StoreSelectorPage() {
                       </span>
                     </div>
                     
-                    {/* ✅ แสดงจำนวนสาขา และ วันคงเหลือ */}
+                    {/* ✅ แสดงจำนวนสาขา และ วันคงเหลือ 
                     <div className="flex items-center gap-3 mt-1 text-sm text-slate-500 font-medium">
                       <span>📍 {shop.branches_count} สาขา</span>
                       <span className="text-slate-200">|</span>
@@ -174,6 +183,46 @@ export default function StoreSelectorPage() {
                         {shop.status === 'expired' ? 'หมดอายุ' : `เหลือ ${shop.days_left} วัน`}
                       </span>
                     </div>
+                    */}
+
+                    {/* ✅ แสดงจำนวนสาขา และ วันคงเหลือ ตามสิทธิ์ของ Role */}
+                    <div className="flex items-center gap-3 mt-1 text-[13px] text-slate-500 font-medium">
+                      
+                      {/* 1. แสดงจำนวนสาขา: เฉพาะ Owner, Admin และ Manager เท่านั้น */}
+                      {["owner", "admin", "manager"].includes(shop.role?.toLowerCase()) && (
+                        <>
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-slate-400">📍</span> 
+                            {shop.branches_count} สาขา
+                          </span>
+                          
+                          {/* แสดงเส้นแบ่ง เฉพาะเมื่อจะแสดงข้อมูล "วันคงเหลือ" ต่อด้านหลัง */}
+                          {["owner", "admin"].includes(shop.role?.toLowerCase()) && (
+                            <span className="text-slate-200">|</span>
+                          )}
+                        </>
+                      )}
+
+                      {/* 2. แสดงวันคงเหลือ: เฉพาะ Owner และ Admin เท่านั้น */}
+                      {["owner", "admin"].includes(shop.role?.toLowerCase()) && (
+                        <span className={`flex items-center gap-1.5 ${
+                          shop.status === 'expired' || shop.days_left < 7 
+                            ? 'text-red-500 font-bold' 
+                            : 'text-emerald-600'
+                        }`}>
+                          <Calendar size={14} /> 
+                          {shop.status === 'expired' ? 'หมดอายุ' : `เหลือ ${shop.days_left} วัน`}
+                        </span>
+                      )}
+
+                      {/* 3. สำหรับ Staff: อาจจะแสดงชื่อสาขาที่สังกัดแทน (ถ้ามีข้อมูล) หรือปล่อยว่างให้ดูสะอาด */}
+                      {shop.role?.toLowerCase() === "staff" && (
+                        <span className="text-slate-400 italic text-xs">
+                          เข้าใช้งานในส่วนงานพนักงาน
+                        </span>
+                      )}
+                    </div>
+
                   </div>
                 </div>
 
